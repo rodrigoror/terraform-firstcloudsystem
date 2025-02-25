@@ -1,14 +1,19 @@
 provider "azurerm" {
   features {}
+  #subscription
+  subscription_id = var.subscription_id
+  client_id       = var.client_id
+  client_secret   = var.client_secret
+  tenant_id       = var.tenant_id
 }
 
-# Create a resource group
+# Criar um grupo de recursos
 resource "azurerm_resource_group" "rg" {
   name     = "MyResourceGroup"
   location = "East US"
 }
 
-# Create a Virtual Network (VPC)
+# Criar uma Virtual Network (VNet)
 resource "azurerm_virtual_network" "vnet" {
   name                = "MyVNet"
   address_space       = ["10.0.0.0/16"]
@@ -16,7 +21,7 @@ resource "azurerm_virtual_network" "vnet" {
   resource_group_name = azurerm_resource_group.rg.name
 }
 
-# Create a public subnet
+# Criar uma sub-rede pública
 resource "azurerm_subnet" "public_subnet" {
   name                 = "PublicSubnet"
   resource_group_name  = azurerm_resource_group.rg.name
@@ -24,7 +29,7 @@ resource "azurerm_subnet" "public_subnet" {
   address_prefixes     = ["10.0.1.0/24"]
 }
 
-# Create a private subnet
+# Criar uma sub-rede privada
 resource "azurerm_subnet" "private_subnet" {
   name                 = "PrivateSubnet"
   resource_group_name  = azurerm_resource_group.rg.name
@@ -32,7 +37,7 @@ resource "azurerm_subnet" "private_subnet" {
   address_prefixes     = ["10.0.2.0/24"]
 }
 
-# Create a public IP for the NestJS app instance
+# Criar um IP público para a instância do NestJS
 resource "azurerm_public_ip" "nestjs_ip" {
   name                = "NestJSAppIP"
   location            = azurerm_resource_group.rg.location
@@ -40,7 +45,7 @@ resource "azurerm_public_ip" "nestjs_ip" {
   allocation_method   = "Dynamic"
 }
 
-# Create a Network Security Group (NSG) for the public subnet
+# Criar um Network Security Group (NSG) para a sub-rede pública
 resource "azurerm_network_security_group" "nsg" {
   name                = "MyNSG"
   location            = azurerm_resource_group.rg.location
@@ -71,7 +76,7 @@ resource "azurerm_network_security_group" "nsg" {
   }
 }
 
-# Create a network interface for the NestJS app instance
+# Criar uma interface de rede para a instância do NestJS
 resource "azurerm_network_interface" "nestjs_nic" {
   name                = "NestJSNIC"
   location            = azurerm_resource_group.rg.location
@@ -85,7 +90,7 @@ resource "azurerm_network_interface" "nestjs_nic" {
   }
 }
 
-# Create a VM for the NestJS app
+# Criar uma VM para o NestJS
 resource "azurerm_linux_virtual_machine" "nestjs_vm" {
   name                = "NestJSApp"
   resource_group_name = azurerm_resource_group.rg.name
@@ -114,29 +119,41 @@ resource "azurerm_linux_virtual_machine" "nestjs_vm" {
   }
 }
 
-# Create a MySQL database in the private subnet
-resource "azurerm_mysql_server" "mysql" {
-  name                = "mysql-server"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+# Criar um MySQL Flexible Server na sub-rede privada
+resource "azurerm_mysql_flexible_server" "mysql_flexible" {
+  name                   = "mysql-flexible-server"
+  resource_group_name    = azurerm_resource_group.rg.name
+  location               = azurerm_resource_group.rg.location
+  administrator_login    = "mysqladmin"
+  administrator_password = var.mysql_admin_password 
+  sku_name               = "B_Standard_B1s"
+  version                = "5.7"
 
-  administrator_login          = "mysqladmin"
-  administrator_login_password = "MySecurePassword123!"
+  storage {
+    size_gb = 20
+  }
 
-  sku_name   = "B_Gen5_1"
-  storage_mb = 5120
-  version    = "5.7"
+  delegated_subnet_id = azurerm_subnet.private_subnet.id
+  private_dns_zone_id = azurerm_private_dns_zone.mysql_dns.id
 
-  ssl_enforcement_enabled = true
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.mysql_dns_link]
 }
 
-# Create a DNS zone (Azure DNS)
-resource "azurerm_dns_zone" "dns" {
-  name                = "myapp.com"
+# Criar uma zona DNS privada para o MySQL Flexible Server
+resource "azurerm_private_dns_zone" "mysql_dns" {
+  name                = "mysql.private.azure.com"
   resource_group_name = azurerm_resource_group.rg.name
 }
 
-# Output the public IP of the NestJS app
+# Vincular a zona DNS privada à VNet
+resource "azurerm_private_dns_zone_virtual_network_link" "mysql_dns_link" {
+  name                  = "mysql-dns-link"
+  resource_group_name   = azurerm_resource_group.rg.name
+  private_dns_zone_name = azurerm_private_dns_zone.mysql_dns.name
+  virtual_network_id    = azurerm_virtual_network.vnet.id
+}
+
+# Output do IP público do NestJS
 output "nestjs_public_ip" {
   value = azurerm_public_ip.nestjs_ip.ip_address
 }

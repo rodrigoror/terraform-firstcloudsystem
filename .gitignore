@@ -1,2 +1,5 @@
 .terraform
 *.lock*
+*.tfstate*
+terraform.tfvars
+*.auto.tfvars
